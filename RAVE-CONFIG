@@ -46,10 +46,12 @@ Suggests:
 InheritPipelines:
 SubPipelines:
     modules/import_lfp_native,
+    modules/import_signals,
     modules/notch_filter,
     modules/wavelet_module,
     modules/reference_module,
     modules/surface_reconstruction,
+    modules/yael_preprocess,
     modules/custom_3d_viewer,
     modules/block_explorer,
     modules/import_bids,
@@ -59,15 +61,17 @@ SubPipelines:
     modules/project_overview
 InteractiveModules:
     modules/import_lfp_native,
+    modules/import_signals,
     modules/notch_filter,
     modules/wavelet_module,
     modules/jupyterlab,
     modules/epoch_generator,
     modules/reference_module,
-    modules/surface_reconstruction,
+    modules/yael_preprocess,
     modules/electrode_localization,
     modules/compatibility_rave1,
     modules/standalone_viewer,
+    modules/standalone_report,
     modules/custom_3d_viewer,
     modules/connectivity_viewer,
     modules/import_bids,
