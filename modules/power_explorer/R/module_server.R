@@ -123,7 +123,7 @@ module_server <- function(input, output, session, ...){
           unlist(crg$conditions)
         }))
 
-        ravedash::logger('restricting to electrodes in ', str_collapse(selected_levels), level='debug')
+        ravepipeline::logger('restricting to electrodes in ', str_collapse(selected_levels), level='debug')
 
         els <- local_data$electrode_meta_data$Electrode[
           local_data$electrode_meta_data[[input$custom_roi_variable]] %in% selected_levels
@@ -361,7 +361,7 @@ module_server <- function(input, output, session, ...){
       local_data$results <- results
     }
 
-    ravedash::logger(
+    ravepipeline::logger(
       'RESULTS AVAIL:\n', paste0(collapse=', ', names(local_data$results))
     )
 
@@ -918,10 +918,10 @@ module_server <- function(input, output, session, ...){
       if(!loaded_flag){ return() }
       new_repository <- pipeline$read("repository")
       if(!inherits(new_repository, "rave_prepare_power")){
-        ravedash::logger("Repository read from the pipeline, but it is not an instance of `rave_prepare_power`. Abort initialization", level = "warning")
+        ravepipeline::logger("Repository read from the pipeline, but it is not an instance of `rave_prepare_power`. Abort initialization", level = "warning")
         return()
       }
-      ravedash::logger("Repository read from the pipeline; initializing the module UI", level = "debug")
+      ravepipeline::logger("Repository read from the pipeline; initializing the module UI", level = "debug")
 
       # check if the repository has the same subject as current one
       old_repository <- component_container$data$repository
@@ -929,10 +929,13 @@ module_server <- function(input, output, session, ...){
 
         if( !attr(loaded_flag, "force") &&
             identical(old_repository$signature, new_repository$signature) ){
-          ravedash::logger("The repository data remain unchanged ({new_repository$subject$subject_id}), skip initialization", level = "debug", use_glue = TRUE)
+          ravepipeline::logger("The repository data remain unchanged ({new_repository$subject$subject_id}), skip initialization", level = "debug", use_glue = TRUE)
           return()
         }
       }
+
+      # Lazy-load the data_list
+      new_repository$mount_data(electrodes = NA)
 
       # TODO: reset UIs to default
 
@@ -1084,7 +1087,7 @@ module_server <- function(input, output, session, ...){
       update_custom_roi_var_list()
 
       # grab new brain
-      brain <- raveio::rave_brain(new_repository$subject$subject_id)
+      brain <- ravecore::rave_brain(new_repository$subject$subject_id)
       local_data$available_electrodes = new_repository$power$dimnames$Electrode
 
       # update the list of available forked pipelines
@@ -1114,7 +1117,7 @@ module_server <- function(input, output, session, ...){
 
       local_data$bcbt_click_log <- NULL
 
-      # ravedash::logger(
+      # ravepipeline::logger(
       #   str(local_data$electrode_meta_data), level = 'info'
       # )
 
@@ -1156,7 +1159,7 @@ module_server <- function(input, output, session, ...){
   track_3dviewer_clicks <- function(proxy) {
     shiny::bindEvent(
       ravedash::safe_observe({
-        ravedash::logger('3dBrain double click')
+        ravepipeline::logger('3dBrain double click')
         ravedash::clear_notifications(class=ns('threedviewer'))
 
         info <- as.list(proxy$mouse_event_double_click)
@@ -1184,7 +1187,7 @@ module_server <- function(input, output, session, ...){
           })
         }
 
-        # ravedash::logger(str(info))
+        # ravepipeline::logger(str(info))
         id <- electrode_selector$get_sub_element_id(with_namespace = FALSE)
 
         shiny::updateTextInput(inputId=id, value=paste0(info$electrode_number))
@@ -1218,7 +1221,7 @@ module_server <- function(input, output, session, ...){
 
   shiny::bindEvent(
     ravedash::safe_observe({
-      # ravedash::logger('3dBrain single click')
+      # ravepipeline::logger('3dBrain single click')
     }),
     brain_proxy$mouse_event_click,
     ignoreNULL = TRUE, ignoreInit = TRUE
@@ -1255,7 +1258,7 @@ module_server <- function(input, output, session, ...){
         scg[[ii]]$conditions = intersect(scg[[ii]]$conditions, all_fcg)
       }
     }
-    # ravedash::logger("available choices should be: ", paste(all_fcg, collapse=','))
+    # ravepipeline::logger("available choices should be: ", paste(all_fcg, collapse=','))
 
     dipsaus::updateCompoundInput2(session = session,
                                   inputId = 'second_condition_groupings',
@@ -1306,7 +1309,7 @@ module_server <- function(input, output, session, ...){
     ravedash::safe_observe({
       if(isTRUE(input$enable_custom_ROI)) {
 
-        ravedash::logger('triggered load_roi_conditions through input$enable_custom_ROI, input$custom_roi_variable,')
+        ravepipeline::logger('triggered load_roi_conditions through input$enable_custom_ROI, input$custom_roi_variable,')
 
         load_roi_conditions()
 
@@ -1334,7 +1337,7 @@ module_server <- function(input, output, session, ...){
     # drop any NA (occurs because not all data are available for all electrodes)
     roi_choices <- roi_choices[!is.na(roi_choices)]
 
-    ravedash::logger('available groups: ', str(roi_choices), level='debug')
+    ravepipeline::logger('available groups: ', str(roi_choices), level='debug')
 
     newval <- lapply(roi_choices, function(rc) {
       list('conditions' = rc, 'label' = rc)
@@ -1368,7 +1371,7 @@ module_server <- function(input, output, session, ...){
       ncomp = 1
     )
 
-    ravedash::logger('trying to update custom ROI groups', level='debug')
+    ravepipeline::logger('trying to update custom ROI groups', level='debug')
   }
 
   shiny::bindEvent(
@@ -1401,8 +1404,8 @@ module_server <- function(input, output, session, ...){
     old_val = input$custom_roi_groupings
 
     # if(!all(roi_choices %in% sapply(old_val, `[[`, 'conditions'))) {
-    # ravedash::logger(sprintf("LOAD %s into SEL", vv), level='debug')
-    # ravedash::logger(str(old_val), level='debug')
+    # ravepipeline::logger(sprintf("LOAD %s into SEL", vv), level='debug')
+    # ravepipeline::logger(str(old_val), level='debug')
 
     # load into selector
     dipsaus::updateCompoundInput2(session=session,
@@ -1438,7 +1441,7 @@ module_server <- function(input, output, session, ...){
             gpo[[nm]] <- input[[lbl]]
           }
         } else if(!is.null(input[[lbl]])) {
-          # ravedash::logger("observe plot options change")
+          # ravepipeline::logger("observe plot options change")
           if(any(input[[lbl]] != gpo[[nm]])) {
             any_changes = TRUE
             gpo[[nm]] <- input[[lbl]]
@@ -1451,7 +1454,7 @@ module_server <- function(input, output, session, ...){
         lbl <- paste0('btp_', nm)
 
         if(!is.null(input[[lbl]])) {
-          # ravedash::logger("observe plot options change")
+          # ravepipeline::logger("observe plot options change")
           if(input[[lbl]] != gpo$plot_options[[nm]]) {
             any_changes = TRUE
             gpo$plot_options[[nm]] <- input[[lbl]]
@@ -1552,7 +1555,7 @@ module_server <- function(input, output, session, ...){
 
     plot_option_list <- pe_graphics_settings_cache$get(optname)
 
-    # ravedash::logger(level='warning', optname, upname)
+    # ravepipeline::logger(level='warning', optname, upname)
 
     new_lim = abs(as.numeric(input[[prefix %&% '_range']]))
 
@@ -1838,7 +1841,7 @@ module_server <- function(input, output, session, ...){
   }
 
   locate_bcbt_click <- function(click, data_loc) {
-    # ravedash::logger("Writing out clicks")
+    # ravepipeline::logger("Writing out clicks")
     # base::assign('click', click, envir = globalenv())
     # base::assign('data_loc', data_loc, envir = globalenv())
 
@@ -2256,7 +2259,7 @@ module_server <- function(input, output, session, ...){
         if(isTRUE(input$cluster_do_overwrite)) {
           utils::write.csv(x, file = fname)
         } else {
-          raveio::safe_write_csv(x, file = fname, quiet = TRUE)
+          ravecore:::safe_write_csv(x, file = fname, quiet = TRUE)
         }
 
         ravedash::show_notification(paste("Clusters written to: ", fname, ' in column: ', cname),
@@ -2282,7 +2285,7 @@ module_server <- function(input, output, session, ...){
 
       cond <- basic_checks(local_reactives$update_3dviewer, check_uni = FALSE)
 
-      brain <- raveio::rave_brain(component_container$data$repository$subject)
+      brain <- ravecore::rave_brain(component_container$data$repository$subject)
 
       if(!cond || is.null(brain)) {
         return(threeBrain::threejs_brain(title = "No 3D model found"))
@@ -2290,7 +2293,7 @@ module_server <- function(input, output, session, ...){
 
       if(length(local_data$results$omnibus_results$stats) > 1) {
 
-        # ravedash::logger(dput(local_data$results$omnibus_results$stats), level='debug')
+        # ravepipeline::logger(dput(local_data$results$omnibus_results$stats), level='debug')
 
         df <- data.frame(t(local_data$results$omnibus_results$stats))
 
@@ -2361,7 +2364,7 @@ module_server <- function(input, output, session, ...){
     render_function = threeBrain::renderBrain({
       cond <- basic_checks(local_reactives$update_3dviewer)
 
-      brain <- raveio::rave_brain(component_container$data$repository$subject)
+      brain <- ravecore::rave_brain(component_container$data$repository$subject)
 
       if(!cond || is.null(brain)) {
         return(threeBrain::threejs_brain(title = "No 3D model found"))
@@ -2515,47 +2518,144 @@ module_server <- function(input, output, session, ...){
   shiny::bindEvent(
     ravedash::safe_observe({
 
-      dipsaus::shiny_alert2(title = "Generating HTML Report",
-                            text = "See console for progress", icon = "info",
-                            danger_mode = FALSE, auto_close = FALSE, buttons = FALSE)
-
-      on.exit({
-        dipsaus::close_alert2()
-      })
+      # dipsaus::shiny_alert2(title = "Generating HTML Report",
+      #                       text = "See console for progress", icon = "info",
+      #                       danger_mode = FALSE, auto_close = FALSE, buttons = FALSE)
+      #
+      # on.exit({
+      #   dipsaus::close_alert2()
+      # })
 
       repository <- pipeline$read('repository')
+      subject <- repository$subject
 
-      outdir <- file.path(repository$subject$rave_path,'reports', 'power_explorer')
-      raveio::dir_create2(outdir)
-
-      fname <- paste0('PowExplHtmlReport_', format(Sys.time(), "%b-%d-%Y-%H-%M"))
+      # outdir <- file.path(repository$subject$rave_path, 'reports', 'power_explorer')
+      # ravepipeline::dir_create2(outdir)
+      # fname <- paste0('PowExplHtmlReport_', format(Sys.time(), "%b-%d-%Y-%H-%M"))
 
       pti <- stringr::str_replace_all(input$exp_html_graphs, stringr::fixed(' '), '_')
       do_ip <- isTRUE(input$exp_html_electrodes_to_include == 'Aggregate + individual')
 
-      rmarkdown::render(file.path(pipeline$pipeline_path,'univariate_report.Rmd'),
-                        params = list(
-                          plots_to_include = pti,
-                          do_overall_plots = TRUE,
-                          do_individual_plots = do_ip
-                        ),
-                        output_dir = outdir,
-                        clean = TRUE,
-                        output_file = fname,
-                        output_format = rmarkdown::html_document(
-                          toc = TRUE, toc_depth = 3, toc_float = list(collapsed=TRUE),
-                          df_print = 'kable',
-                          theme = 'spacelab'
-                        )
+      job_id <- pipeline$generate_report(
+        "univariatePower",
+        subject = subject,
+        output_format = "html_document",
+        theme = "spacelab",
+        params = list(
+          plots_to_include = pti,
+          do_overall_plots = TRUE,
+          do_individual_plots = do_ip
+        ),
+        code_folding = "none"
+        # output_format = "html_document",
+        # theme = 'spacelab'
+      )
+      # Need to store the job somewhere so the process is not killed
+      local_data$report_job_id <- job_id
+
+      ravedash::clear_notifications(class = ns("_report_wizard_notif"), session = session)
+      ravedash::show_notification(
+        title = "Report(s) scheduled",
+        message = shiny::div(
+          shiny::p(
+            "Report scheduled. Please check the subject report directory later: \n",
+            subject$report_path,
+            " \nFeel free to dismiss this message."
+          )
+        ),
+        autohide = FALSE,
+        type = "white",
+        class = ns("_report_wizard_notif"),
+        session = session,
+        close = TRUE
+      )
+      job_promise <- ravepipeline::as.promise(job_id)
+
+      # return a promise that allows the job to pop up notifications once done
+      # Thie reactive return a promise or shiny will not recognize
+      handling_promise <- job_promise$then(
+        onFulfilled = function(path) {
+          params <- as.list(attr(path, "params"))
+          params$module <- "standalone_report"
+          params$type <- "widget"
+          params$project_name <- subject$project_name
+          params$subject_code <- subject$subject_code
+          if(!length(params$report_filename)) {
+            params$report_filename <- basename(dirname(path))
+          }
+          params <- unlist(lapply(names(params), function(nm) {
+            sprintf("%s=%s", nm, htmltools::urlEncodePath(params[[nm]]))
+          }))
+          params <- paste(params, collapse = "&")
+          url <- sprintf("?%s", params)
+
+          ravedash::clear_notifications(class = ns("_report_wizard_notif"),
+                                        session = session)
+          ravedash::show_notification(
+            title = "Report generated!",
+            type = "default",
+            message = shiny::div(
+              shiny::p(
+                "Univariate analysis report has been generated. Check the following path"
+              ),
+              shiny::p(
+                shiny::tags$code(
+                  class = "bg-secondary",
+                  path
+                )
+              ),
+              if(!is.null(url)) {
+                shiny::a(target = "_blank", href = url, class = "btn btn-sm btn-success",
+                         shiny::span("View report ", ravedash::shiny_icons$external_link))
+              }
+            ),
+            close = TRUE,
+            autohide = FALSE
+          )
+        },
+        onRejected = function(e) {
+          ravepipeline::logger_error_condition(e)
+          ravedash::error_notification(cond = e,
+                                       title = "Error while generating reports",
+                                       autohide = FALSE,
+                                       prefix = "Report generating error: ")
+        }
       )
 
-      # we made it, show manually close the old alert before showing the new one
-      dipsaus::close_alert2()
-      on.exit({})
+      # Must handle the errors of onFulfilled or shiny will crash
+      handling_promise$then(
+        onRejected = function(e) {
+          ravepipeline::logger_error_condition(e)
+          ravedash::error_notification(cond = e)
+        }
+      )
 
-      dipsaus::shiny_alert2(title = "Done exporting HTML report!",
-                            text = sprintf("Report is here: %s", outdir), icon = "success",
-                            danger_mode = FALSE, auto_close = FALSE)
+      # return job_promise so non-block
+      return()
+
+      # rmarkdown::render(file.path(pipeline$pipeline_path,'report-univariate.Rmd'),
+      #                   params = list(
+      #                     plots_to_include = pti,
+      #                     do_overall_plots = TRUE,
+      #                     do_individual_plots = do_ip
+      #                   ),
+      #                   output_dir = outdir,
+      #                   clean = TRUE,
+      #                   output_file = fname,
+      #                   output_format = rmarkdown::html_document(
+      #                     toc = TRUE, toc_depth = 3, toc_float = list(collapsed=TRUE),
+      #                     df_print = 'kable',
+      #                     theme = 'spacelab'
+      #                   )
+      # )
+
+      # we made it, show manually close the old alert before showing the new one
+      # dipsaus::close_alert2()
+      # on.exit({})
+      #
+      # dipsaus::shiny_alert2(title = "Done exporting HTML report!",
+      #                       text = sprintf("Report is here: %s", outdir), icon = "success",
+      #                       danger_mode = FALSE, auto_close = FALSE)
 
     }), input$btn_export_html_report, ignoreNULL = TRUE, ignoreInit = TRUE
   )
@@ -2683,7 +2783,7 @@ module_server <- function(input, output, session, ...){
 
       pipe_choices <- unname(c('Create New', lbls))
 
-      # ravedash::logger('updating forks', level='trace')
+      # ravepipeline::logger('updating forks', level='trace')
 
       shiny::updateSelectInput(
         inputId = 'replace_existing_group_anlysis_pipeline',
@@ -2715,7 +2815,8 @@ module_server <- function(input, output, session, ...){
 
       } else {
         # make sure this is available
-        prog <- raveio::progress_with_logger("Saving results for group analysis", max = 3)
+        prog <- ravepipeline::rave_progress(title = "Saving results for group analysis",
+                                            max = 3L, shiny_auto_close = TRUE)
         prog$inc('Load data')
         pipeline$run('data_for_group_analysis')
 
@@ -2783,10 +2884,11 @@ module_server <- function(input, output, session, ...){
                                     mapply(save_list_to_h5, v,
                                            paste0(nm, '/', names(v)))
                                   } else {
-                                    raveio::save_h5(x=v, file=h5file, name=nm,
-                                                    level=ifelse(is.numeric(v), 4, 9),
-                                                    ctype=ifelse(is.numeric(v), 'numeric', 'character'),
-                                                    replace = TRUE
+                                    ieegio::io_write_h5(
+                                      x=v, file=h5file, name=nm,
+                                      level=ifelse(is.numeric(v), 4, 9),
+                                      ctype=ifelse(is.numeric(v), 'numeric', 'character'),
+                                      replace = TRUE
                                     )
                                   }
                                 }
@@ -2993,7 +3095,7 @@ module_server <- function(input, output, session, ...){
         df %<>% merge(bmd, by='Electrode', all.y=FALSE)
         cnames %<>% c(bmd.names)
       }
-      ravedash::logger('done adding vars', level='trace')
+      ravepipeline::logger('done adding vars', level='trace')
     }
 
     # remove columns the user doesn't want (this is exclusion rule)
@@ -3260,7 +3362,7 @@ module_server <- function(input, output, session, ...){
         # otbed$y
         # otbed <- local_data$results$over_time_by_electrode_data[[1]]
 
-        # ravedash::logger(
+        # ravepipeline::logger(
         #   paste(sep=', ', agg_method, dist_method), level='info'
         # )
 
@@ -3418,7 +3520,7 @@ module_server <- function(input, output, session, ...){
         }
       }
 
-      # ravedash::logger(level='info', "plot_by_frequency_over_time")
+      # ravepipeline::logger(level='info', "plot_by_frequency_over_time")
       plot_by_frequency_over_time(
         by_frequency_over_time_data,
         plot_args = pe_graphics_settings_cache$get('by_frequency_over_time_plot_options')
