@@ -91,6 +91,10 @@ modules:
     label: Power Explorer
     order: 14
     badge: N=1|badge-primary
+  group_power_explorer:
+    label: Group power analysis
+    order: 14.1
+    badge: N>1|badge-primary
   trace_viewer:
     label: Recording Block Inspector
     order: 15

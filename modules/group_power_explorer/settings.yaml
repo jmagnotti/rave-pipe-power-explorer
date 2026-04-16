@@ -1,0 +1,27 @@
+pipeline_table:
+  project:
+  - mTurkWords
+  - mTurkWords
+  subject:
+  - PAV011
+  - YEP
+  pipeline_name:
+  - power_explorer
+  - power_explorer
+  timestamp:
+  - 1.7495776e+09
+  - 1.7495771e+09
+  label:
+  - five_conditions_decibel_pAc_lt_001
+  - five_conditions_decibel_pAc_lt_001
+  directory:
+  - power_explorer-five_conditions_decibel_pAc_lt_001-20250610T134653
+  - power_explorer-five_conditions_decibel_pAc_lt_001-20250610T133759
+  policy:
+  - group_analysis
+  - group_analysis
+  version:
+  - 0.0.1
+  - 0.0.1
+project_name: mTurkWords
+selected_pipelines: five_conditions_decibel_pAc_lt_001

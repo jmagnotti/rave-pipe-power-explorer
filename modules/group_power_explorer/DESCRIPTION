@@ -1,0 +1,27 @@
+Package: group_power_explorer
+Type: rave-pipeline
+Title: Analysis and visualization of power data from multiple patients
+Version: 0.0.1
+Language: en-US
+Encoding: UTF-8
+License: MIT
+Authors@R: c(
+    person("John", "Magnotti", email = "johnmag@upenn.edu", role = c("aut", "cre")),
+    person("Zhengjia", "Wang", email = "zhengjia.wang@pennmedicine.upenn.edu", role = c("aut", "cre"))
+    )
+Description: Load data saved from previously-run power explorer pipelines, build customizable (linear) mixed-effects models, and publication-ready figures.
+BugReports: https://github.com/orgs/rave-ieeg/discussions
+URL: https://rave.wiki
+Imports:
+    dipsaus,
+    rutabaga,
+    ravebuiltins,
+    magrittr,
+    cluster,
+    lme4,
+    car,
+    stringr,
+    stringi,
+    data.table,
+    ravedash,
+    lmtest

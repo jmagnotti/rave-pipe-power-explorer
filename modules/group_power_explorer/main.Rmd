@@ -1,0 +1,372 @@
+---
+title: "RAVE Group Power Explorer"
+output:
+  html_document: default
+  pdf_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include = FALSE}
+# This code block sets up the engine environment
+# Please do not remove me
+ravepipeline::pipeline_setup_rmd("group_power_explorer")
+
+options(knit_rave_pipelines = TRUE)
+```
+
+```{rave load_group_data, language = "R", export = "group_data"}
+
+require(data.table)
+.datatable.aware = TRUE
+
+pipeline_table <- as.data.frame(pipeline_table)
+
+subjects_needed <- unique(subset(pipeline_table, label %in% selected_pipelines)$subject)
+
+# grab the group data from all subjects
+all_pipe_res <- lapply(subjects_needed, function(sbj) {
+  print(sbj)
+  subject <- raveio::RAVESubject$new(
+    project_name = project_name,
+    subject_code = sbj
+  )
+  
+  pipe_table_row <- as.data.frame(subset(pipeline_table, subject == sbj))[1,]
+  
+  pipe_path <- file.path(subject$pipeline_path, pipe_table_row$pipeline_name,
+                         pipe_table_row$directory
+  )
+  
+  # pipe_result <- ravepipeline::pipeline_from_path(pipe_path)
+  dfga <- file.path(pipe_path, 'shared', 'objects', 'data_for_group_analysis')
+  if(file.exists(dfga)) {
+    return(readRDS(dfga))
+  }
+  
+  return (NULL)
+})
+
+ravedash::logger('Got initial pipe res', level='debug')
+
+# remove nulls
+all_pipe_res <- all_pipe_res[!sapply(all_pipe_res, is.null)]
+
+electrode_details <- lapply(all_pipe_res, function(apr) {
+  ee <- subset(apr$electrode_information, Electrode %in% unique(apr$omnibus_data$Electrode))
+  ee$Subject = apr$analysis_settings_clean[[1]]$subject_code
+  ee$Project = apr$analysis_settings_clean[[1]]$project_name
+  
+  # Bring subject/project to the front
+  ee[,c('Subject', 'Project', setdiff(names(ee), c('Subject', 'Project')))]
+})
+
+names_in_common <- Reduce(intersect, lapply(electrode_details, names))
+
+electrode_details <- rbind_list(
+  lapply(electrode_details, `[`, names_in_common)
+)
+ravedash::logger('Got electrode details', level='debug')
+flatten_as <- function(as) {
+  as$frequency %<>% paste0(collapse='-')
+  as$censor_enabled=FALSE
+  as$censor_window='none'
+  if(as$censor_info$enabled) {
+    as$censor_window <- paste0(as$censor_info$window, collapse='-')
+    as$censor_enabled <- TRUE
+  }
+  
+  as$censor_info <- NULL
+  as$frequency_dd <- NULL
+  as$time %<>% paste0(collapse='-')
+  
+  data.frame(as)
+}
+
+all_analysis_settings <- lapply(all_pipe_res, function(apr) {
+  lapply(apr$analysis_settings_clean, flatten_as) %>% rbind_list
+}) %>% rbind_list
+
+
+all_data <- lapply(all_pipe_res, function(apr) {
+  od <- apr$omnibus_data
+  
+  # to save space, drop details about analysis settings, as those are now stored
+  # in the Analysis settings object and can be merged back in later (as long as 
+  # we have Subject and AnalysisLabel)
+  od[c('Time', 'Freq', 'Event', 'currently_selected')] <- NULL
+  
+  od$Subject <- apr$analysis_settings_clean[[1]]$subject_code
+  
+  od
+}) %>% rbind_list
+
+
+# build over time data
+all_labels <- sapply(all_pipe_res, function(apr) {
+  names(apr$over_time_by_electrode_data)
+}) %>% unlist %>% c %>% unique
+
+# grab the maximal overlapping time range
+available_range <- sapply(all_labels, function(lbl) {
+  by_sbj <- lapply(all_pipe_res, function(apr) {
+    
+    if(is.null(apr$over_time_by_electrode_data[[lbl]])) {
+      return(NULL)
+    }
+    
+    range(apr$over_time_by_electrode_data[[lbl]]$x)
+  }) %>% rbind_list
+  
+  apply(by_sbj, 2, closest_to_zero)
+}, simplify = FALSE)
+
+# lbl <- all_labels[[1]]
+over_time_by_condition_data_long <- sapply(all_labels, function(lbl) {
+   first_res <- all_pipe_res[[1]]$over_time_by_electrode_data[[lbl]]
+  
+  eldata <- lapply(all_pipe_res, function(apr) {
+    if(is.null(apr$over_time_by_electrode_data[[lbl]])) {
+      return(NULL)
+    }
+    
+    time_ind <- apr$over_time_by_electrode_data[[lbl]]$x %within% available_range[[lbl]]
+    apr$over_time_by_electrode_data[[lbl]]$data[time_ind,]
+  }) %>% cbind_list
+  
+  res <- list()
+  nms <- c('xlab', 'label', 'has_trials', 'analysis_group', 'analysis_window')
+  res[nms] = first_res[nms]
+  
+  # grab the time values that are within the available range
+  res$x = first_res$x[all_pipe_res[[1]]$over_time_by_electrode_data[[lbl]]$x %within% available_range[[lbl]]]
+  
+  # take the m/se across electrodes at each time point
+  res$data <- t(apply(eldata, 1, m_se))
+  res$ylab <- first_res$zlab
+  
+  lbl_tokens <- stringr::str_split(lbl, stringr::fixed('.'), simplify = TRUE)
+  res$time_window_label = lbl_tokens[1]
+  res$data_label = lbl_tokens[2]
+
+  # take into account SE 
+  res$range <- range(plus_minus(res$data))
+  
+  return(res)
+}, simplify = FALSE)
+
+# OTBC data is laid out hierarchically to allow for easily swapping the order
+otbc_names <- apply(
+  stringr::str_split(all_labels, stringr::fixed('.'), simplify = TRUE),
+  2, unique, simplify = FALSE
+)
+
+over_time_by_condition_data <- vector('list', length = length(otbc_names[[2]]))
+names(over_time_by_condition_data) = otbc_names[[2]]
+
+for(ii in otbc_names[[2]]) {
+  for(jj in otbc_names[[1]]) {
+    over_time_by_condition_data[[ii]][[jj]] = over_time_by_condition_data_long[[paste(jj,ii,sep='.')]]
+  }
+}
+
+unires <- lapply(all_pipe_res, function(apr) {
+  df <- as.data.frame(t(apr$omnibus_stats))
+  # apr <- all_pipe_res[[2]]
+  df$Project = apr$analysis_settings_clean[[1]]$project_name
+  df$Subject = apr$analysis_settings_clean[[1]]$subject_code
+  df$Electrode = as.integer(colnames(apr$omnibus_stats))
+  
+  first_ind <- which(names(df) %in% c('Project', 'Subject', 'Electrode'))
+  df[,c(first_ind, (1:ncol(df))[-first_ind])] %>% set_rownames(NULL)
+})
+
+merged_unires <- unires[[1]]
+if(length(unires) > 1) {
+  for(ii in 2:length(unires))
+  merged_unires %<>% merge(unires[[ii]], all=TRUE)
+}
+
+group_data <- list(
+  electrodes = electrode_details,
+  data = all_data,
+  univariate_results = merged_unires,
+  analysis_settings = all_analysis_settings,
+  over_time_by_condition_data = over_time_by_condition_data
+)
+
+group_data$all_data_by_el <- as.data.frame(
+  data.table::data.table(all_data)[ , list(y=mean(y)), keyby=c('Electrode', 'Factor1', 'AnalysisLabel')]
+)
+
+# plot_grouped_data(mat = all_data_by_el, xvar = 'Factor1', gvar='AnalysisLabel', repeated_index = 'Electrode', yvar='y')
+
+# template$objects$PAV011$electrodes$set_values(unires[[1]])
+# template$objects$YEP$electrodes$set_values(unires[[2]])
+# template$plot()
+```
+
+```{rave build_over_time_by_electrode_data, language = "R", export = "over_time_by_electrode_data"}
+
+# build over time data
+all_labels <- sapply(all_pipe_res, function(apr) {
+  names(apr$over_time_by_electrode_data)
+}) %>% unlist %>% c %>% unique
+
+# grab the maximal overlapping time range
+available_range <- sapply(all_labels, function(lbl) {
+  by_sbj <- lapply(all_pipe_res, function(apr) {
+    
+    if(is.null(apr$over_time_by_electrode_data[[lbl]])) {
+      return(NULL)
+    }
+    
+    range(apr$over_time_by_electrode_data[[lbl]]$x)
+  }) %>% rbind_list
+  
+  apply(by_sbj, 2, closest_to_zero)
+}, simplify = FALSE)
+
+# lbl <- all_labels[[1]]
+over_time_by_condition_data <- sapply(all_labels, function(lbl) {
+   first_res <- all_pipe_res[[1]]$over_time_by_electrode_data[[lbl]]
+  
+  eldata <- lapply(all_pipe_res, function(apr) {
+    if(is.null(apr$over_time_by_electrode_data[[lbl]])) {
+      return(NULL)
+    }
+    
+    time_ind <- apr$over_time_by_electrode_data[[lbl]]$x %within% available_range[[lbl]]
+    apr$over_time_by_electrode_data[[lbl]]$data[time_ind,]
+  }) %>% cbind_list
+  
+  res <- list()
+  nms <- c('xlab', 'ylab', 'zlab', 'label', 'has_trials', 'analysis_group', 'analysis_window')
+  res[nms] = first_res[nms]
+  
+  # grab the time values that are within the available range
+  res$x = first_res$x[all_pipe_res[[1]]$over_time_by_electrode_data[[lbl]]$x %within% available_range[[lbl]]]
+  
+  res$data <- (eldata)
+  
+  lbl_tokens <- stringr::str_split(lbl, stringr::fixed('.'), simplify = TRUE)
+  res$time_window_label = lbl_tokens[1]
+  res$data_label = lbl_tokens[2]
+
+  # take into account SE 
+  res$range <- range(res$data)
+  
+  return(res)
+}, simplify = FALSE, USE.NAMES = TRUE)
+
+# OTBC data is laid out hierarchically to allow for easily swapping the order
+# otbc_names <- apply(
+#   stringr::str_split(all_labels, stringr::fixed('.'), simplify = TRUE),
+#   2, unique, simplify = FALSE
+# )
+
+# over_time_by_condition_data <- vector('list', length = length(otbc_names[[2]]))
+# names(over_time_by_condition_data) = otbc_names[[2]]
+# 
+# for(ii in otbc_names[[2]]) {
+#   for(jj in otbc_names[[1]]) {
+#     over_time_by_condition_data[[ii]][[jj]] = over_time_by_condition_data_long[[paste(jj,ii,sep='.')]]
+#   }
+# }
+```
+
+
+```{rave check_compatibility, language = "R", export = "compatibility_report"}
+compatibility_report <- ''
+# for all the pipe res objects, check:
+
+#-- Serious issues 
+# baseline settings
+
+# compatible analysis settings
+  # frequency range
+  # event label (not analysis settings label)
+  # event window
+
+
+#-- Warnings
+
+# check reference types
+
+# trial labels that enter into condition groups
+
+# Analysis settings label that differ despite having the same analysis settings
+# these should be merged with a warning
+
+#-- Information
+
+# how many electrodes contributed by each subject
+# number of trials per electrode
+
+```
+
+
+```{rave run_model, language="R", export = "model_results"}
+require(lme4)
+
+# these should come from pipeline settings
+analysis_function = 'lmer'
+analysis_formula <- "y ~ AnalysisLabel * Factor1 + (1|Subject/Electrode)"
+
+aFUN <- match.fun(analysis_function)
+aFormula <- as.formula(analysis_formula)
+
+model_results <- aFUN(aFormula, data=group_data$data)
+
+
+
+```
+
+
+```{rave assess_model, language="R", export="model_fit_statistics"}
+require(car)
+
+model_fit_statistics <- Anova(model_results)
+```
+
+```{rave generate_post_hocs, language="R", export="post_hoc_results"}
+require(emmeans)
+
+post_hoc_str <- 'pairwise ~ Factor1'
+post_hoc_formula <- as.formula(post_hoc_str)
+
+pFormula <- as.formula(post_hoc_formula)
+
+post_hoc_results <- emmeans(
+  object = model_results, specs = post_hoc_formula
+)
+
+```
+
+```{rave generate_second_level_post_hocs, language="R", export="second_level_post_hoc_results"}
+
+second_level_post_hoc_results <- NULL
+# emres <- emmeans::emmeans(model_results, ~ ...)
+# second_level_post_hoc_results <- emmeans::contrast(
+#   emres, ...
+# )
+
+```
+
+
+
+```{r build, echo=FALSE, results='hide'}
+build_pipeline(make_file = "make-group_power_explorer.R")
+```
+
+
+```{r visualize, echo=FALSE}
+# Fixed usage, show pipeline graph
+try({
+  asNamespace("ravepipeline")$pipeline_dependency_graph(
+    pipeline_path = ".", glimpse = TRUE)
+}, silent = TRUE)
+```
+
+
+
